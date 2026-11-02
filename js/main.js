@@ -37,6 +37,17 @@ if (DEMO) {
   [api, auth] = await Promise.all([import(`./db.js?v=${V}`), import(`./auth.js?v=${V}`)]);
 }
 
+// ---------- Mùa (mỗi năm một mùa, dữ liệu lưu riêng) ----------
+let season = T.seasonOf();            // vd 2027 = đếm ngược đến 01/01/2027
+const seasonTarget = () => T.targetOf(season);
+const CELEBRATE_MS = 3 * 864e5;       // 3 ngày đầu năm: hiện Bảng vàng năm vừa qua
+api?.useSeason?.(season);
+function renderYear() {
+  document.title = `Countdown ${season}`;
+  document.querySelectorAll(".js-year").forEach((el) => (el.textContent = season));
+}
+renderYear();
+
 // ---------- Trạng thái ----------
 let user = null;           // tài khoản Firebase
 let me = null;             // hồ sơ: { uid, name, photoURL, total, streak, lastCheckinAt }
@@ -48,7 +59,6 @@ let boards = {};           // cache bảng xếp hạng
 let online = [];
 let prevTotals = new Map();
 let ranks = new Map();
-let goldenShown = false;
 let simWarned = false;
 let timers = [];
 const subs = {};          // các kênh cập nhật tức thì
@@ -85,6 +95,7 @@ async function boot(u) {
   show("screen-game");
   initFx($("fx"));
   startBackground();
+  maybeShowLastGolden();
   if (!me.name) askName(true);
   else if (!localStorage.getItem("cd-rules-seen")) openRules();
 
@@ -123,7 +134,9 @@ async function startBackground() {
 // ---------- Đồng hồ ----------
 function tick() {
   const t = T.now();
-  const left = T.TARGET - t;
+  // Qua giao thừa → chuyển sang mùa mới
+  if (me && T.seasonOf(t) !== season) { changeSeason(); return; }
+  const left = seasonTarget() - t;
   const p = T.parts(left);
   $("cd-d").textContent = T.pad(p.d);
   $("cd-h").textContent = T.pad(p.h);
@@ -132,7 +145,7 @@ function tick() {
 
   const m = T.timeMult(t);
   const chip = $("chip-time");
-  chip.textContent = m ? `×${m} ${T.timeMultLabel(t)}` : "Đã sang 2027";
+  chip.textContent = `×${m} ${T.timeMultLabel(t)}`;
   chip.classList.toggle("hot", m >= 3);
 
   const g = $("chip-golden");
@@ -164,8 +177,26 @@ function tick() {
       launch(undefined, 2);
     }
   } else if (!fin.classList.contains("hidden")) fin.classList.add("hidden");
+}
 
-  if (left <= 0 && !goldenShown) { goldenShown = true; showGolden(); }
+async function changeSeason() {
+  const old = season;
+  season = T.seasonOf();
+  api.useSeason?.(season);
+  renderYear();
+  myDay = myWeek = 0;
+  pending = { user: 0, period: 0 };
+  try { localStorage.setItem(`cd-golden-${old}`, "1"); } catch {}
+  showGolden(old, true);
+  if (user) boot(user); // tải hồ sơ + bảng xếp hạng của mùa mới (điểm bắt đầu lại từ 0)
+}
+
+/** Mấy ngày đầu năm: tự mở Bảng vàng năm vừa qua (1 lần) */
+function maybeShowLastGolden() {
+  const last = season - 1;
+  if (last < T.FIRST_SEASON || T.now() - T.targetOf(last) > CELEBRATE_MS) return;
+  try { if (localStorage.getItem(`cd-golden-${last}`)) return; localStorage.setItem(`cd-golden-${last}`, "1"); } catch {}
+  showGolden(last, true);
 }
 
 // ---------- Điểm danh ----------
@@ -178,7 +209,7 @@ function checkinState(t = T.now()) {
 function renderCheckin(t) {
   const b = $("btn-checkin");
   const s = checkinState(t);
-  if (s.can && T.TARGET > t) {
+  if (s.can) {
     b.classList.remove("done");
     $("checkin-sub").textContent = `+${T.checkinBonus(s.next)} ĐIỂM`;
   } else {
@@ -191,7 +222,6 @@ $("btn-checkin").onclick = async () => {
   if (!me) return;
   const s = checkinState();
   if (!s.can) return ui.toast("Hôm nay bạn đã điểm danh rồi. Quay lại vào ngày mai để giữ chuỗi 🔥");
-  if (T.TARGET <= T.now()) return;
   if (T.isSimulated()) return ui.toast("Đang xem thử thời gian — không lưu điểm.");
   const bonus = T.checkinBonus(s.next);
   try {
@@ -415,7 +445,7 @@ function askName(first) {
   ui.openModal((card) => {
     card.append(
       h("h2", {}, first ? "Bạn tên gì?" : "Đổi tên"),
-      h("p", {}, "Tên sẽ hiện trong đám đông và trên Bảng vàng 2027."),
+      h("p", {}, `Tên sẽ hiện trong đám đông và trên Bảng vàng ${season}.`),
       input, err,
       h("div", { class: "row" },
         first ? h("button", { class: "btn btn-ghost", onclick: () => save(`Người chơi ${me.uid.slice(0, 4)}`) }, "Để sau") : null,
@@ -437,7 +467,8 @@ function openRules() {
       h("li", {}, "Điểm danh mỗi ngày để giữ chuỗi 🔥 — chuỗi càng dài, mỗi phát càng nhiều điểm (30 ngày liên tiếp ×2). Bỏ 1 ngày là mất chuỗi!"),
       h("li", {}, "⭐ Giờ vàng 20:00–20:15 mỗi tối: điểm ×3."),
       h("li", {}, "3 bảng xếp hạng: Hôm nay, Tuần này, cả Mùa."),
-      h("li", {}, "Đúng 00:00 ngày 01/01/2027: top 10 của Mùa lên Bảng vàng 2027. Người gửi lời chúc đầu tiên sau giao thừa là \"Người mở màn 2027\"."),
+      h("li", {}, `Đúng 00:00 ngày 01/01/${season}: top 10 của Mùa lên Bảng vàng ${season}. Người gửi lời chúc đầu tiên sau giao thừa là "Người mở màn ${season}".`),
+      h("li", {}, `Sau giao thừa, mùa ${season + 1} bắt đầu: điểm và chuỗi tính lại từ 0. Bảng vàng các năm được lưu mãi.`),
     ),
     h("button", { class: "btn btn-gold", onclick: ui.closeModal }, "Bắt đầu bắn pháo! 🎆"),
   ));
@@ -454,6 +485,7 @@ $("btn-me").onclick = () => {
       h("div", {}, h("b", {}, String(me.streak || 0)), "Chuỗi ngày"),
     ),
     h("button", { class: "btn btn-ghost", onclick: openRules }, "📜 Luật chơi"),
+    h("button", { class: "btn btn-ghost", onclick: openHall }, "🏆 Bảng vàng các năm"),
     h("button", { class: "btn btn-ghost", onclick: () => askName(false) }, "✏️ Đổi tên"),
     !DEMO && user.isAnonymous ? h("button", { class: "btn btn-google", onclick: linkGoogle }, h("span", { class: "g" }, "G"), " Liên kết Google để giữ điểm") : null,
     !DEMO ? h("button", { class: "btn btn-ghost", onclick: logout }, "Đăng xuất") : null,
@@ -484,8 +516,10 @@ async function logout() {
 $("btn-wish").onclick = () => openWish();
 function openWish() {
   if (cdLeft("wish") > 0) return; // đang chờ 15 giây
-  const after = T.now() >= T.TARGET;
-  const ta = h("textarea", { maxlength: 120, rows: 3, placeholder: after ? "Chúc mừng năm mới 2027! …" : "Năm 2027 mình mong…" });
+  // 3 ngày đầu năm: lời chúc đầu tiên của mùa mới = "Người mở màn" năm vừa qua
+  const last = season - 1;
+  const after = last >= T.FIRST_SEASON && T.now() - T.targetOf(last) < CELEBRATE_MS;
+  const ta = h("textarea", { maxlength: 120, rows: 3, placeholder: after ? `Chúc mừng năm mới ${last}! …` : `Năm ${season} mình mong…` });
   const list = h("ul", { class: "wish-list" });
   const send = h("button", { class: "btn btn-gold" }, "🏮 Gửi lời chúc");
   send.onclick = async () => {
@@ -500,7 +534,7 @@ function openWish() {
       ui.closeModal();
       ui.toast("Đã gửi lời chúc 🏮");
       launch(0.5, 2);
-      if (after) setTimeout(showGolden, 1500);
+      if (after) setTimeout(() => showGolden(last), 1500);
     } catch (e) {
       send.disabled = false;
       if (e?.code === "permission-denied") { startCooldown("wish", T.RULES.wishCooldownMs); ui.toast("Chờ 15 giây giữa 2 lời chúc nhé ⏳"); }
@@ -510,7 +544,7 @@ function openWish() {
   ui.openModal((card) => {
     card.append(
       h("h2", {}, "🏮 Lời chúc năm mới"),
-      h("p", {}, after ? "Người gửi lời chúc ĐẦU TIÊN sau 00:00 là \"Người mở màn 2027\"!" : "Lời chúc hiện cho mọi người cùng xem. Sau đúng 00:00, người gửi đầu tiên sẽ là \"Người mở màn 2027\"."),
+      h("p", {}, after ? `Người gửi lời chúc ĐẦU TIÊN sau 00:00 là "Người mở màn ${last}"!` : `Lời chúc hiện cho mọi người cùng xem. Sau đúng 00:00, người gửi đầu tiên sẽ là "Người mở màn ${season}".`),
       ta, send, h("p", { style: "margin-top:14px" }, "Lời chúc mới nhất:"), list,
     );
     setTimeout(() => ta.focus(), 50);
@@ -521,33 +555,49 @@ function openWish() {
   }).catch(() => {});
 }
 
-// ---------- Bảng vàng giao thừa ----------
-async function showGolden() {
-  finale(10);
-  ui.boom(true);
+// ---------- Bảng vàng (mỗi năm) ----------
+async function showGolden(year = season - 1, celebrate = false) {
+  if (celebrate) { finale(10); ui.boom(true); }
+  ui.closeModal();
   const box = $("golden");
   box.classList.remove("hidden");
   box.innerHTML = "";
   const card = h("div", { class: "golden-card" },
-    h("h2", {}, "CHÚC MỪNG NĂM MỚI"),
-    h("div", { class: "big-year" }, "2027"),
-    h("p", { style: "color:var(--gold);font-weight:800;margin:6px 0 0" }, "🏆 BẢNG VÀNG 2027"),
+    h("h2", {}, celebrate ? "CHÚC MỪNG NĂM MỚI" : "BẢNG VÀNG"),
+    h("div", { class: "big-year" }, String(year)),
+    h("p", { style: "color:var(--gold);font-weight:800;margin:6px 0 0" }, `🏆 BẢNG VÀNG ${year}`),
   );
   const ol = h("ol");
-  const opener = h("div", { class: "opener" }, "Đang tìm Người mở màn 2027…");
+  const opener = h("div", { class: "opener" }, `Đang tìm Người mở màn ${year}…`);
+  const canWish = year === season - 1 && T.now() - T.targetOf(year) < CELEBRATE_MS;
   card.append(ol, opener,
     h("div", { class: "row", style: "display:flex;gap:8px" },
-      h("button", { class: "btn btn-gold", onclick: openWish }, "🏮 Gửi lời chúc"),
+      canWish ? h("button", { class: "btn btn-gold", onclick: () => { box.classList.add("hidden"); openWish(); } }, "🏮 Gửi lời chúc") : null,
       h("button", { class: "btn btn-ghost", onclick: () => box.classList.add("hidden") }, "Đóng"),
     ),
   );
   box.append(card);
   try {
-    const top = await api.fetchBoard("season", "season", 10);
+    const top = await api.fetchBoard("season", "season", 10, year);
+    if (!top.length) ol.append(h("li", {}, "Chưa có ai trong mùa này."));
     top.forEach((u, i) => ol.append(h("li", {},
       h("span", { class: "rank " + (i === 0 ? "r1" : i === 1 ? "r2" : i === 2 ? "r3" : "rn") }, String(i + 1)),
       u.name || "Ẩn danh", h("span", { class: "pts" }, ui.fmt(u.pts)))));
-    const op = await api.fetchOpener();
-    opener.textContent = op ? `🌅 Người mở màn 2027: ${op.name} — “${op.text}”` : "🌅 Chưa có ai — gửi lời chúc ngay để trở thành Người mở màn 2027!";
+    const op = await api.fetchOpener(year);
+    opener.textContent = op
+      ? `🌅 Người mở màn ${year}: ${op.name} — “${op.text}”`
+      : canWish ? `🌅 Chưa có ai — gửi lời chúc ngay để trở thành Người mở màn ${year}!` : `🌅 Người mở màn ${year}: chưa có`;
   } catch (e) { console.warn(e); }
+}
+
+/** Danh sách các năm đã qua */
+function openHall() {
+  const years = [];
+  for (let y = season - 1; y >= T.FIRST_SEASON; y--) years.push(y);
+  ui.openModal((card) => card.append(
+    h("h2", {}, "🏆 Bảng vàng các năm"),
+    years.length
+      ? h("div", { class: "year-list" }, ...years.map((y) => h("button", { class: "btn btn-ghost", onclick: () => showGolden(y) }, `Bảng vàng ${y}`)))
+      : h("p", {}, `Mùa đầu tiên (${season}) đang diễn ra — Bảng vàng sẽ có sau giao thừa.`),
+  ));
 }

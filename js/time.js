@@ -1,10 +1,18 @@
 // Thời gian & cách tính điểm
 //
 // Mọi thứ tính theo GIỜ MÁY CHỦ (không tin đồng hồ điện thoại) và theo giờ Việt Nam (UTC+7).
-// Các mốc ở đây PHẢI KHỚP với firestore.rules.
+// Các mốc ở đây PHẢI KHỚP với firestore.rules (tgt/dec1/tMult).
 
-export const TARGET = Date.UTC(2026, 11, 31, 17, 0, 0); // 00:00:00 01/01/2027 giờ VN
-export const DEC1 = Date.UTC(2026, 10, 30, 17, 0, 0);   // 00:00 01/12/2026 giờ VN
+// ---- Mùa (mỗi năm một mùa) ----
+// Mùa Y = đếm ngược đến 00:00:00 ngày 01/01/Y (giờ VN). Mùa đầu tiên: 2027.
+// Đúng giao thừa, game tự chuyển sang mùa Y+1. Dữ liệu mỗi mùa lưu riêng (cd_seasons/{Y}/…).
+export const FIRST_SEASON = 2027;
+export const targetOf = (y) => Date.UTC(y - 1, 11, 31, 17, 0, 0); // 00:00 01/01/y giờ VN
+export const dec1Of = (y) => Date.UTC(y - 1, 10, 30, 17, 0, 0);   // 00:00 01/12/(y-1) giờ VN
+/** Mùa hiện tại = năm (giờ VN) + 1 */
+export function seasonOf(t = now()) {
+  return new Date(t + 7 * 3600_000).getUTCFullYear() + 1;
+}
 const VN = 7 * 3600_000;
 
 export const RULES = {
@@ -57,22 +65,23 @@ export function weekKey(t = now()) {
 
 // ---- Hệ số ----
 export function timeMult(t = now()) {
-  const left = TARGET - t;
+  const y = seasonOf(t);
+  const left = targetOf(y) - t;
   if (left <= 0) return 0;
   if (left <= 60_000) return 10;
   if (left <= 3600_000) return 5;
   if (left <= 7 * 864e5) return 3;
-  if (t >= DEC1) return 2;
+  if (t >= dec1Of(y)) return 2;
   return 1;
 }
 export function timeMultLabel(t = now()) {
-  const m = timeMult(t), left = TARGET - t;
+  const m = timeMult(t), left = targetOf(seasonOf(t)) - t;
   if (!m) return "Đã kết thúc";
   if (left <= 60_000) return "60 giây cuối";
   if (left <= 3600_000) return "Giờ cuối cùng";
   if (left <= 7 * 864e5) return "Tuần cuối";
   if (m === 2) return "Tháng 12";
-  return "Tháng 11";
+  return "Thường";
 }
 export function streakMult(streak) {
   return 1 + Math.min(streak || 0, 30) / 30; // 30 ngày liên tiếp → ×2

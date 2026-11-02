@@ -244,7 +244,7 @@ h1 { margin: 6px 0; }
 .hud-right { display: flex; gap: 4px; min-width: 0; }
 #btn-music.on { border-color: var(--line); color: var(--gold); }
 .music-hint {
-  position: fixed; left: 50%; bottom: calc(150px + env(safe-area-inset-bottom)); transform: translateX(-50%); z-index: 250;
+  position: fixed; left: 50%; bottom: calc(150px + env(safe-area-inset-bottom)); transform: translateX(-50%); z-index: 85;
   padding: 8px 16px; border-radius: 999px; font-size: 13px; font-weight: 700; white-space: nowrap; pointer-events: none;
   background: rgba(10, 8, 30, .88); border: 1px solid var(--gold); color: var(--gold);
   animation: hintPulse 1.6s ease-in-out infinite;
@@ -291,3 +291,6 @@ h1 { margin: 6px 0; }
 .place.auto b { position: static; background: none; padding: 0; text-align: center; }
 .place.auto small { color: var(--muted); font-size: 11px; }
 .place-ico { font-size: 28px; }
+
+.year-list { display: grid; gap: 6px; margin-top: 10px; }
+.year-list .btn { margin: 0; }

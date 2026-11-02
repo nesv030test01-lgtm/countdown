@@ -31,7 +31,7 @@ Chống gian lận khác: giờ lấy từ máy chủ; mỗi lần ghi tối đa
 
 - `?demo=1` — dữ liệu giả, không cần Firebase.
 - `?demo=1&t=2026-12-31T20:05:00%2B07:00` — xem thử giờ vàng tuần cuối.
-- `?demo=1&t=2026-12-31T23:59:50%2B07:00` — xem 10 giây cuối + Bảng vàng.
+- `?demo=1&t=2026-12-31T23:59:50%2B07:00` — xem 10 giây cuối, Bảng vàng 2027 và chuyển sang mùa 2028.
   (Khi có `t=…` điểm không được lưu.)
 
 ## 🏙️ Ảnh nền theo tỉnh
@@ -48,13 +48,22 @@ Chép file nhạc (.mp3, .m4a, .ogg, .wav…) vào thư mục `audio/` rồi com
 - Nút **⏭** chuyển bài, **🔇 Tắt nhạc** để tắt. Thêm `?nhac=1` vào link để tự phát trong OBS.
 - Đặt tên file không dấu, không khoảng trắng. Chỉ dùng nhạc bạn được phép sử dụng.
 
+## 📅 Mỗi năm một mùa (tự động)
+
+- Mùa **Y** = đếm ngược đến 00:00 ngày 01/01/**Y** (giờ VN). Mùa đầu tiên: 2027.
+- Đúng giao thừa game **tự chuyển sang mùa Y+1**: đồng hồ đếm tiếp đến năm sau, điểm + chuỗi + bảng xếp hạng bắt đầu từ 0. Tên và tỉnh đã chọn được mang sang.
+- Dữ liệu mỗi năm **lưu riêng, không bị xoá**. Năm đã qua bị khoá (chỉ xem, không ai sửa được điểm).
+- 3 ngày đầu năm: Bảng vàng năm vừa qua tự hiện 1 lần; lời chúc đầu tiên sau 00:00 là "Người mở màn".
+- Xem lại các năm: menu tên (góc phải) → **🏆 Bảng vàng các năm**.
+- Không cần sửa code mỗi năm.
+
 ## Dữ liệu Firestore
 
 ```
-cd_users/{uid}                     name, photoURL, total, streak, lastCheckinAt, lastAt, lastSeen
-cd_days/{YYYY-MM-DD}/players/{uid} name, photoURL, pts, lastAt
-cd_weeks/{YYYY-Www}/players/{uid}  name, photoURL, pts, lastAt
-cd_wishes/{id}                     uid, name, text, createdAt
+cd_seasons/{Y}/users/{uid}                     name, photoURL, province, total, streak, lastCheckinAt, lastAt, lastWishAt, lastSeen
+cd_seasons/{Y}/days/{YYYY-MM-DD}/players/{uid} name, photoURL, pts, lastAt
+cd_seasons/{Y}/weeks/{YYYY-Www}/players/{uid}  name, photoURL, pts, lastAt
+cd_seasons/{Y}/wishes/{id}                     uid, name, text, createdAt
 ```
 
 ## Chi phí

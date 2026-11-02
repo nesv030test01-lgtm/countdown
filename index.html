@@ -3,19 +3,19 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <title>Countdown 2027</title>
-  <meta name="description" content="Cùng đếm ngược đến 2027 — bắn pháo hoa, giữ chuỗi, tranh top Bảng vàng giao thừa." />
+  <title>Countdown Online</title>
+  <meta name="description" content="Cùng đếm ngược đến năm mới — bắn pháo hoa, giữ chuỗi, tranh top Bảng vàng giao thừa." />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;600;700;800;900&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="css/style.css?v=5" />
+  <link rel="stylesheet" href="css/style.css?v=7" />
 </head>
 <body>
   <!-- ĐĂNG NHẬP -->
   <section id="screen-login" class="screen hidden">
     <div class="card login-card">
-      <div class="login-year">2027</div>
+      <div class="login-year js-year">2027</div>
       <h1>Countdown Online</h1>
-      <p class="sub">Cùng cả nước đếm ngược đến giao thừa. Bắn pháo, giữ chuỗi, giành tên trên Bảng vàng 2027.</p>
+      <p class="sub">Cùng cả nước đếm ngược đến giao thừa. Bắn pháo, giữ chuỗi, giành tên trên Bảng vàng <span class="js-year">2027</span>.</p>
       <button id="btn-google" class="btn btn-google"><span class="g">G</span> Đăng nhập bằng Google</button>
       <button id="btn-guest" class="btn btn-ghost">Chơi ngay (khách)</button>
       <p class="note">Khách vẫn được lưu điểm. Liên kết Google sau để giữ điểm khi đổi máy.</p>
@@ -63,7 +63,7 @@
       <!-- Đồng hồ đếm ngược -->
       <div class="clock">
         <div class="clock-title">ĐẾM NGƯỢC ĐẾN</div>
-        <div class="clock-year">2027</div>
+        <div class="clock-year js-year">2027</div>
         <div class="clock-digits">
           <div class="cell"><b id="cd-d">00</b><span>NGÀY</span></div>
           <div class="cell"><b id="cd-h">00</b><span>GIỜ</span></div>
@@ -128,6 +128,6 @@
   <div id="toast" class="toast"></div>
   <div id="loading" class="loading">Đang lên đồng hồ…</div>
 
-  <script type="module" src="js/main.js?v=7"></script>
+  <script type="module" src="js/main.js?v=8"></script>
 </body>
 </html>

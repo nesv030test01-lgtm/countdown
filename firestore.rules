@@ -70,22 +70,24 @@ service cloud.firestore {
 
 
     // =====================================================================
-    // COUNTDOWN ONLINE (đếm ngược 2027)
-    // Mốc thời gian phải khớp js/time.js của countdown_online
+    // COUNTDOWN ONLINE — mỗi năm một mùa: cd_seasons/{y}/…
+    // Mùa y = đếm ngược đến 00:00 01/01/y (giờ VN). Chỉ ghi được vào ĐÚNG mùa đang diễn ra;
+    // mùa đã qua bị khoá (chỉ đọc). Mốc phải khớp js/time.js của countdown.
     // =====================================================================
-    function TARGET() { return timestamp.value(1798736400000); } // 00:00 01/01/2027 VN
-    function DEC1() { return timestamp.value(1796058000000); }   // 00:00 01/12/2026 VN
+    function tgt(y) { return timestamp.date(int(y), 1, 1) - duration.value(7, 'h'); }      // 00:00 01/01/y VN
+    function dec1(y) { return timestamp.date(int(y) - 1, 12, 1) - duration.value(7, 'h'); } // 00:00 01/12/(y-1) VN
+    function inSeason(y) { return request.time < tgt(y) && request.time >= tgt(int(y) - 1); }
 
     // Hệ số theo thời gian (giống timeMult trong time.js)
-    function tMult() {
-      return request.time >= TARGET() ? 0
-        : request.time >= TARGET() - duration.value(60, 's') ? 10
-        : request.time >= TARGET() - duration.value(1, 'h') ? 5
-        : request.time >= TARGET() - duration.value(7, 'd') ? 3
-        : request.time >= DEC1() ? 2 : 1;
+    function tMult(y) {
+      return request.time >= tgt(y) ? 0
+        : request.time >= tgt(y) - duration.value(60, 's') ? 10
+        : request.time >= tgt(y) - duration.value(1, 'h') ? 5
+        : request.time >= tgt(y) - duration.value(7, 'd') ? 3
+        : request.time >= dec1(y) ? 2 : 1;
     }
     // Điểm tối đa cho 1 lần ghi = 1 phát pháo: hệ số thời gian × chuỗi (×2) × giờ vàng (×3)
-    function cap() { return tMult() * 6; }
+    function cap(y) { return tMult(y) * 6; }
     function dlt(f) {
       return request.resource.data.get(f, 0) - (resource == null ? 0 : resource.data.get(f, 0));
     }
@@ -98,9 +100,9 @@ service cloud.firestore {
         || request.time >= resource.data.lastAt + duration.value(14, 's');
     }
 
-    function cdShotOk() {
+    function cdShotOk(y) {
       return request.resource.data.lastAt == request.time && cooldownOk()
-        && dlt('total') >= 0 && dlt('total') <= cap()
+        && dlt('total') >= 0 && dlt('total') <= cap(y)
         && same('streak') && same('lastCheckinAt') && same('lastWishAt');
     }
     function cdCheckinOk() {
@@ -122,35 +124,33 @@ service cloud.firestore {
     function cdProfileOnly() {
       return dlt('total') == 0 && same('streak') && same('lastCheckinAt') && same('lastAt') && same('lastWishAt');
     }
-
-    match /cd_users/{uid} {
-      allow read: if signedIn();
-      allow create: if isOwner(uid) && request.resource.data.total == 0
-        && request.resource.data.streak == 0 && nameOk();
-      allow update: if isOwner(uid) && nameOk()
-        && (cdProfileOnly() || cdShotOk() || cdCheckinOk() || cdWishOk());
-      allow delete: if false;
-    }
-
-    function cdPeriodOk(uid) {
-      return isOwner(uid)
+    function cdPeriodOk(y, uid) {
+      return isOwner(uid) && inSeason(y)
         && request.resource.data.keys().hasOnly(['name', 'photoURL', 'pts', 'lastAt'])
         && request.resource.data.name is string && request.resource.data.name.size() <= 24
         && request.resource.data.lastAt == request.time && cooldownOk()
-        && dlt('pts') >= 0 && dlt('pts') <= cap() + 300;
-    }
-    match /cd_days/{day}/players/{uid} {
-      allow read: if signedIn();
-      allow create, update: if cdPeriodOk(uid);
-    }
-    match /cd_weeks/{week}/players/{uid} {
-      allow read: if signedIn();
-      allow create, update: if cdPeriodOk(uid);
+        && dlt('pts') >= 0 && dlt('pts') <= cap(y) + 300;
     }
 
-    match /cd_wishes/{id} {
+    // Đọc: mọi dữ liệu countdown (kể cả các năm cũ) cho người đã đăng nhập
+    match /cd_seasons/{y}/{document=**} {
       allow read: if signedIn();
-      allow create: if signedIn()
+    }
+    match /cd_seasons/{y}/users/{uid} {
+      allow create: if isOwner(uid) && inSeason(y)
+        && request.resource.data.total == 0 && request.resource.data.streak == 0 && nameOk();
+      allow update: if isOwner(uid) && inSeason(y) && nameOk()
+        && (cdProfileOnly() || cdShotOk(y) || cdCheckinOk() || cdWishOk());
+      allow delete: if false;
+    }
+    match /cd_seasons/{y}/days/{day}/players/{uid} {
+      allow create, update: if cdPeriodOk(y, uid);
+    }
+    match /cd_seasons/{y}/weeks/{week}/players/{uid} {
+      allow create, update: if cdPeriodOk(y, uid);
+    }
+    match /cd_seasons/{y}/wishes/{id} {
+      allow create: if signedIn() && inSeason(y)
         && request.resource.data.keys().hasOnly(['uid', 'name', 'text', 'createdAt'])
         && request.resource.data.uid == request.auth.uid
         && request.resource.data.name is string && request.resource.data.name.size() <= 24
@@ -158,7 +158,7 @@ service cloud.firestore {
         && request.resource.data.text.size() >= 1 && request.resource.data.text.size() <= 120
         && request.resource.data.createdAt == request.time
         // phải ghi kèm lastWishAt trong hồ sơ (để máy chủ kiểm tra 15 giây)
-        && getAfter(/databases/$(database)/documents/cd_users/$(request.auth.uid)).data.lastWishAt == request.time;
+        && getAfter(/databases/$(database)/documents/cd_seasons/$(y)/users/$(request.auth.uid)).data.lastWishAt == request.time;
       allow update, delete: if false;
     }
 
