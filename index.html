@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Countdown 2027</title>
+  <meta name="description" content="Cùng đếm ngược đến 2027 — bắn pháo hoa, giữ chuỗi, tranh top Bảng vàng giao thừa." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;600;700;800;900&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="css/style.css?v=2" />
+</head>
+<body>
+  <!-- ĐĂNG NHẬP -->
+  <section id="screen-login" class="screen hidden">
+    <div class="card login-card">
+      <div class="login-year">2027</div>
+      <h1>Countdown Online</h1>
+      <p class="sub">Cùng cả nước đếm ngược đến giao thừa. Bắn pháo, giữ chuỗi, giành tên trên Bảng vàng 2027.</p>
+      <button id="btn-google" class="btn btn-google"><span class="g">G</span> Đăng nhập bằng Google</button>
+      <button id="btn-guest" class="btn btn-ghost">Chơi ngay (khách)</button>
+      <p class="note">Khách vẫn được lưu điểm. Liên kết Google sau để giữ điểm khi đổi máy.</p>
+      <p id="login-error" class="error"></p>
+    </div>
+  </section>
+
+  <!-- MÀN CHÍNH -->
+  <section id="screen-game" class="screen hidden">
+    <div class="stage" id="stage">
+      <div class="sky"></div>
+      <div class="stars"></div>
+      <canvas id="fx" class="fx"></canvas>
+
+      <svg class="skyline" viewBox="0 0 400 120" preserveAspectRatio="none" aria-hidden="true">
+        <defs>
+          <linearGradient id="g-bld" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0" stop-color="#1b1640"/><stop offset="1" stop-color="#0a0820"/>
+          </linearGradient>
+          <pattern id="win" width="8" height="10" patternUnits="userSpaceOnUse">
+            <rect x="2" y="2" width="3" height="4" fill="#ffd36b" opacity=".55"/>
+          </pattern>
+        </defs>
+        <g fill="url(#g-bld)">
+          <rect x="0" y="60" width="34" height="60"/><rect x="30" y="40" width="28" height="80"/>
+          <rect x="56" y="70" width="30" height="50"/><rect x="84" y="30" width="22" height="90"/>
+          <rect x="104" y="55" width="36" height="65"/><rect x="138" y="20" width="18" height="100"/>
+          <polygon points="196,0 205,30 214,120 178,120 187,30"/>
+          <rect x="222" y="45" width="30" height="75"/><rect x="250" y="62" width="26" height="58"/>
+          <rect x="274" y="28" width="24" height="92"/><rect x="296" y="52" width="40" height="68"/>
+          <rect x="334" y="38" width="26" height="82"/><rect x="358" y="66" width="42" height="54"/>
+        </g>
+        <g fill="url(#win)">
+          <rect x="32" y="44" width="24" height="70"/><rect x="86" y="34" width="18" height="80"/>
+          <rect x="106" y="60" width="32" height="55"/><rect x="140" y="24" width="14" height="90"/>
+          <rect x="224" y="50" width="26" height="64"/><rect x="276" y="32" width="20" height="82"/>
+          <rect x="298" y="56" width="36" height="58"/><rect x="336" y="42" width="22" height="72"/>
+        </g>
+        <circle cx="196" cy="2" r="2.5" fill="#ff5f7a"/>
+      </svg>
+      <div class="plaza"></div>
+
+      <!-- Đồng hồ đếm ngược -->
+      <div class="clock">
+        <div class="clock-title">ĐẾM NGƯỢC ĐẾN</div>
+        <div class="clock-year">2027</div>
+        <div class="clock-digits">
+          <div class="cell"><b id="cd-d">00</b><span>NGÀY</span></div>
+          <div class="cell"><b id="cd-h">00</b><span>GIỜ</span></div>
+          <div class="cell"><b id="cd-m">00</b><span>PHÚT</span></div>
+          <div class="cell"><b id="cd-s">00</b><span>GIÂY</span></div>
+        </div>
+        <div class="chips">
+          <span class="chip" id="chip-time">×1 Tháng 11</span>
+          <span class="chip" id="chip-streak">🔥 Chuỗi 0 ngày</span>
+          <span class="chip gold" id="chip-golden">⭐ Giờ vàng 20:00</span>
+        </div>
+      </div>
+
+      <!-- Thẻ của tôi -->
+      <div class="mycard">
+        <div class="mc-row"><span>Điểm mùa</span><b id="my-total">0</b></div>
+        <div class="mc-row"><span>Hôm nay</span><b id="my-day">0</b></div>
+        <div class="mc-row"><span>Hạng hôm nay</span><b id="my-rank">—</b></div>
+        <div class="mc-row"><span>Mỗi phát</span><b id="my-per">+1</b></div>
+      </div>
+
+      <!-- Bảng xếp hạng -->
+      <div class="board">
+        <div class="tabs">
+          <button data-tab="day" class="on">Hôm nay</button>
+          <button data-tab="week">Tuần</button>
+          <button data-tab="season">Mùa</button>
+        </div>
+        <ol id="board-list"></ol>
+      </div>
+
+      <div id="people" class="people"></div>
+      <div id="float-layer" class="float-layer"></div>
+
+      <div class="hud-top">
+        <div class="pill live"><span class="dot"></span><b id="online-count">1</b>&nbsp;người đang chờ</div>
+        <div class="hud-right">
+          <button id="btn-next" class="pill" title="Bài tiếp theo">⏭</button>
+          <button id="btn-music" class="pill">🎵 Bật nhạc</button>
+          <button id="btn-me" class="pill me-pill"><img id="me-ava" class="ava hidden" alt="" referrerpolicy="no-referrer" /><span id="me-name">…</span> ▾</button>
+        </div>
+      </div>
+
+      <div id="banner" class="banner-evt"></div>
+
+      <div class="bottom-bar">
+        <button class="big" id="btn-checkin"><small id="checkin-sub">+10 ĐIỂM</small><span class="ico">📅</span>Điểm danh</button>
+        <button class="big primary" id="btn-shoot"><small id="shoot-sub">+1 ĐIỂM</small><span class="ico">🎆</span>Bắn pháo</button>
+        <button class="big" id="btn-wish"><small>LỜI CHÚC</small><span class="ico">🏮</span>Gửi lời chúc</button>
+      </div>
+
+      <!-- Đếm 10 giây cuối -->
+      <div id="final" class="final hidden"></div>
+    </div>
+  </section>
+
+  <!-- Bảng vàng giao thừa -->
+  <div id="golden" class="golden hidden"></div>
+
+  <div id="modal" class="modal hidden"><div id="modal-card" class="modal-card"></div></div>
+  <div id="toast" class="toast"></div>
+  <div id="loading" class="loading">Đang lên đồng hồ…</div>
+
+  <script type="module" src="js/main.js?v=2"></script>
+</body>
+</html>

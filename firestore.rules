@@ -1,0 +1,160 @@
+rules_version = '2';
+// Luật CHUNG cho cả Đi Chùa Online và Countdown Online (cùng 1 Firebase project).
+// Dán TOÀN BỘ file này vào Firestore → Rules → Publish.
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() { return request.auth != null; }
+    function isOwner(uid) { return signedIn() && request.auth.uid == uid; }
+
+    // Giá trị mới / cũ của một trường số (mặc định 0 nếu chưa có)
+    function newVal(f) { return request.resource.data.get(f, 0); }
+    function oldVal(f) { return resource == null ? 0 : resource.data.get(f, 0); }
+    // Chỉ được tăng, và tăng tối đa `max` mỗi lần ghi (chống hack điểm cơ bản)
+    function incOk(f, max) { return newVal(f) >= oldVal(f) && newVal(f) <= oldVal(f) + max; }
+
+    function countersOk() {
+      return incOk('congDuc', 10)
+        && incOk('huong', 1) && incOk('cauPhuc', 1) && incOk('hoaSen', 1)
+        && incOk('chuong', 1) && incOk('goMo', 1) && incOk('xinXam', 1);
+    }
+
+    function nameOk() {
+      let n = request.resource.data.get('name', null);
+      return n == null || (n is string && n.size() >= 1 && n.size() <= 24);
+    }
+
+    // Hồ sơ người chơi: ai đăng nhập cũng xem được (để hiện tên + bảng xếp hạng),
+    // chỉ chủ nhân được sửa.
+    match /users/{uid} {
+      allow read: if signedIn();
+      allow create: if isOwner(uid) && newVal('congDuc') == 0 && nameOk();
+      allow update: if isOwner(uid) && countersOk() && nameOk();
+      allow delete: if false;
+
+      // Lời cầu: riêng tư
+      match /prayers/{pid} {
+        allow read: if isOwner(uid);
+        allow create: if isOwner(uid)
+          && request.resource.data.keys().hasOnly(['text', 'createdAt'])
+          && request.resource.data.text is string
+          && request.resource.data.text.size() > 0
+          && request.resource.data.text.size() <= 300;
+        allow update, delete: if false;
+      }
+    }
+
+    // Tổng của cả chùa
+    match /stats/global {
+      allow read: if signedIn();
+      allow create, update: if signedIn()
+        && request.resource.data.keys().hasOnly(['congDuc', 'huong', 'cauPhuc', 'hoaSen', 'chuong', 'goMo', 'xinXam'])
+        && countersOk();
+    }
+
+    // Dòng hoạt động
+    match /events/{eid} {
+      allow read: if signedIn();
+      allow create: if signedIn()
+        && request.resource.data.keys().hasOnly(['uid', 'name', 'action', 'points', 'createdAt'])
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.name is string
+        && request.resource.data.name.size() <= 24
+        && request.resource.data.action in ['dangHuong', 'cauPhuc', 'hoaSen', 'chuong', 'goMo', 'xinXam']
+        && request.resource.data.points is int
+        && request.resource.data.points >= 0
+        && request.resource.data.points <= 5
+        && request.resource.data.createdAt == request.time;
+      allow update, delete: if false;
+    }
+
+
+    // =====================================================================
+    // COUNTDOWN ONLINE (đếm ngược 2027)
+    // Mốc thời gian phải khớp js/time.js của countdown_online
+    // =====================================================================
+    function TARGET() { return timestamp.value(1798736400000); } // 00:00 01/01/2027 VN
+    function DEC1() { return timestamp.value(1796058000000); }   // 00:00 01/12/2026 VN
+
+    // Hệ số theo thời gian (giống timeMult trong time.js)
+    function tMult() {
+      return request.time >= TARGET() ? 0
+        : request.time >= TARGET() - duration.value(60, 's') ? 10
+        : request.time >= TARGET() - duration.value(1, 'h') ? 5
+        : request.time >= TARGET() - duration.value(7, 'd') ? 3
+        : request.time >= DEC1() ? 2 : 1;
+    }
+    // Điểm tối đa cho 1 lần ghi: 20 phát × hệ số thời gian × chuỗi (×2) × giờ vàng (×3)
+    function cap() { return 20 * tMult() * 6; }
+    function dlt(f) {
+      return request.resource.data.get(f, 0) - (resource == null ? 0 : resource.data.get(f, 0));
+    }
+    function same(f) {
+      return request.resource.data.get(f, null) == (resource == null ? null : resource.data.get(f, null));
+    }
+    // Giữa 2 lần ghi điểm phải cách ít nhất 5 giây (chống bot)
+    function cooldownOk() {
+      return resource == null || !('lastAt' in resource.data)
+        || request.time >= resource.data.lastAt + duration.value(5, 's');
+    }
+
+    function cdShotOk() {
+      return request.resource.data.lastAt == request.time && cooldownOk()
+        && dlt('total') >= 0 && dlt('total') <= cap()
+        && same('streak') && same('lastCheckinAt');
+    }
+    function cdCheckinOk() {
+      let prev = resource.data.get('lastCheckinAt', null);
+      let s = request.resource.data.streak;
+      return request.resource.data.lastCheckinAt == request.time
+        && (prev == null || request.time >= prev + duration.value(20, 'h'))
+        && (s == 1 || (prev != null && request.time < prev + duration.value(48, 'h') && s == resource.data.get('streak', 0) + 1))
+        && dlt('total') >= 0 && dlt('total') <= 10 * s && s <= 1000
+        && same('lastAt');
+    }
+    function cdProfileOnly() {
+      return dlt('total') == 0 && same('streak') && same('lastCheckinAt') && same('lastAt');
+    }
+
+    match /cd_users/{uid} {
+      allow read: if signedIn();
+      allow create: if isOwner(uid) && request.resource.data.total == 0
+        && request.resource.data.streak == 0 && nameOk();
+      allow update: if isOwner(uid) && nameOk()
+        && (cdProfileOnly() || cdShotOk() || cdCheckinOk());
+      allow delete: if false;
+    }
+
+    function cdPeriodOk(uid) {
+      return isOwner(uid)
+        && request.resource.data.keys().hasOnly(['name', 'photoURL', 'pts', 'lastAt'])
+        && request.resource.data.name is string && request.resource.data.name.size() <= 24
+        && request.resource.data.lastAt == request.time && cooldownOk()
+        && dlt('pts') >= 0 && dlt('pts') <= cap() + 300;
+    }
+    match /cd_days/{day}/players/{uid} {
+      allow read: if signedIn();
+      allow create, update: if cdPeriodOk(uid);
+    }
+    match /cd_weeks/{week}/players/{uid} {
+      allow read: if signedIn();
+      allow create, update: if cdPeriodOk(uid);
+    }
+
+    match /cd_wishes/{id} {
+      allow read: if signedIn();
+      allow create: if signedIn()
+        && request.resource.data.keys().hasOnly(['uid', 'name', 'text', 'createdAt'])
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.name is string && request.resource.data.name.size() <= 24
+        && request.resource.data.text is string
+        && request.resource.data.text.size() >= 1 && request.resource.data.text.size() <= 120
+        && request.resource.data.createdAt == request.time;
+      allow update, delete: if false;
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
