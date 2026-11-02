@@ -23,6 +23,7 @@ export function demoApi() {
     ensureUser: async () => ({ ...me }),
     setName: async (_, name) => { me.name = name; meCb({ ...me }); },
     heartbeat: async () => {},
+    setProvince: async () => {},
     watchMe: (_, cb) => { meCb = cb; cb({ ...me }); return () => {}; },
     checkin: async (_, streak, bonus) => { me.streak = streak; me.lastCheckinAt = now(); me.total += bonus; meCb({ ...me }); },
     flush: async ({ userPts, periodPts }) => { me.total += userPts; day.set("demo-me", (day.get("demo-me") || 0) + periodPts); meCb({ ...me }); },

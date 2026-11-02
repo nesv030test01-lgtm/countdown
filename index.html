@@ -7,7 +7,7 @@
   <meta name="description" content="Cùng đếm ngược đến 2027 — bắn pháo hoa, giữ chuỗi, tranh top Bảng vàng giao thừa." />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;600;700;800;900&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="css/style.css?v=3" />
+  <link rel="stylesheet" href="css/style.css?v=5" />
 </head>
 <body>
   <!-- ĐĂNG NHẬP -->
@@ -28,6 +28,8 @@
     <div class="stage" id="stage">
       <div class="sky"></div>
       <div class="stars"></div>
+      <div class="bg-photo"><img alt="" /><img alt="" /></div>
+      <div class="bg-shade"></div>
       <canvas id="fx" class="fx"></canvas>
 
       <svg class="skyline" viewBox="0 0 400 120" preserveAspectRatio="none" aria-hidden="true">
@@ -72,6 +74,7 @@
           <span class="chip" id="chip-time">×1 Tháng 11</span>
           <span class="chip" id="chip-streak">🔥 Chuỗi 0 ngày</span>
           <span class="chip gold" id="chip-golden">⭐ Giờ vàng 20:00</span>
+          <button class="chip place-chip hidden" id="chip-place">📍 Chọn tỉnh ▾</button>
         </div>
       </div>
 
@@ -125,6 +128,6 @@
   <div id="toast" class="toast"></div>
   <div id="loading" class="loading">Đang lên đồng hồ…</div>
 
-  <script type="module" src="js/main.js?v=5"></script>
+  <script type="module" src="js/main.js?v=7"></script>
 </body>
 </html>

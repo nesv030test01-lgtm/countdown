@@ -84,6 +84,7 @@ async function boot(u) {
 
   show("screen-game");
   initFx($("fx"));
+  startBackground();
   if (!me.name) askName(true);
   else if (!localStorage.getItem("cd-rules-seen")) openRules();
 
@@ -99,6 +100,24 @@ async function boot(u) {
   );
   tick();
   renderMe();
+}
+
+// ---------- Ảnh nền theo tỉnh ----------
+let bgCtl = null;
+async function startBackground() {
+  if (bgCtl) return bgCtl.setChoice(me?.province);
+  bgCtl = { setChoice() {} };
+  try {
+    const bg = await import(`./bg.js?v=${V}`);
+    bgCtl = await bg.initBackground({
+      h, openModal: ui.openModal, closeModal: ui.closeModal, initial: me?.province,
+      onPick: (key) => {
+        if (!me || DEMO) return;
+        me.province = key;
+        api.setProvince(me.uid, key).catch((e) => console.warn(e));
+      },
+    });
+  } catch (e) { console.warn(e); }
 }
 
 // ---------- Đồng hồ ----------
@@ -197,21 +216,24 @@ function startCooldown(k, ms) {
   try { localStorage.setItem(CD_KEY, JSON.stringify(cooldowns)); } catch {}
 }
 function renderCooldowns(t) {
-  const shot = cdLeft("shot"), wish = cdLeft("wish");
-  const sb = $("btn-shoot"), wb = $("btn-wish");
-  sb.classList.toggle("cooling", shot > 0);
-  sb.style.setProperty("--p", shot > 0 ? (1 - shot / T.RULES.shotCooldownMs).toFixed(3) : 1);
-  if (shot > 0) $("shoot-sub").textContent = `CHỜ ${Math.ceil(shot / 1000)}s`;
-  else { const per = T.shotPoints(t, me.streak); $("shoot-sub").textContent = per ? `+${per} ĐIỂM` : "HẾT GIỜ"; }
-  wb.classList.toggle("cooling", wish > 0);
-  wb.style.setProperty("--p", wish > 0 ? (1 - wish / T.RULES.wishCooldownMs).toFixed(3) : 1);
-  $("wish-sub").textContent = wish > 0 ? `CHỜ ${Math.ceil(wish / 1000)}s` : "LỜI CHÚC";
+  // Đang chờ → khoá nút, ẩn nội dung, chỉ hiện đồng hồ "⏳ 12s"
+  const set = (btn, left, total) => {
+    const cooling = left > 0;
+    btn.disabled = cooling;
+    btn.classList.toggle("cooling", cooling);
+    btn.dataset.wait = cooling ? `⏳ ${Math.ceil(left / 1000)}s` : "";
+    btn.style.setProperty("--p", cooling ? (1 - left / total).toFixed(3) : 1);
+  };
+  set($("btn-shoot"), cdLeft("shot"), T.RULES.shotCooldownMs);
+  set($("btn-wish"), cdLeft("wish"), T.RULES.wishCooldownMs);
+  const per = T.shotPoints(t, me.streak);
+  $("shoot-sub").textContent = per ? `+${per} ĐIỂM` : "HẾT GIỜ";
+  $("wish-sub").textContent = "LỜI CHÚC";
 }
 
 $("btn-shoot").onclick = () => {
   if (!me) return;
-  const left = cdLeft("shot");
-  if (left > 0) return ui.toast(`Mỗi người 15 giây bắn 1 phát — chờ thêm ${Math.ceil(left / 1000)} giây nhé ⏳`);
+  if (cdLeft("shot") > 0) return; // đang chờ 15 giây (nút đã bị khoá)
   const t = T.now();
   const pts = T.shotPoints(t, me.streak);
   launch(0.5 + (Math.random() - 0.5) * 0.3, pts >= 10 ? 2 : 1);
@@ -219,6 +241,7 @@ $("btn-shoot").onclick = () => {
   ui.cheer(me.uid);
   if (!pts) return ui.toast("Mùa đếm ngược đã kết thúc — chúc mừng năm mới! 🎉");
   startCooldown("shot", T.RULES.shotCooldownMs);
+  renderCooldowns(t);
   pending.user += pts;
   pending.period += pts;
   ui.floatText(`+${pts}`, 0.5, 70);
@@ -460,6 +483,7 @@ async function logout() {
 
 $("btn-wish").onclick = () => openWish();
 function openWish() {
+  if (cdLeft("wish") > 0) return; // đang chờ 15 giây
   const after = T.now() >= T.TARGET;
   const ta = h("textarea", { maxlength: 120, rows: 3, placeholder: after ? "Chúc mừng năm mới 2027! …" : "Năm 2027 mình mong…" });
   const list = h("ul", { class: "wish-list" });
@@ -467,12 +491,12 @@ function openWish() {
   send.onclick = async () => {
     const text = ta.value.replace(/\s+/g, " ").trim();
     if (!text) return ui.toast("Hãy viết lời chúc trước nhé.");
-    const left = cdLeft("wish");
-    if (left > 0) return ui.toast(`Mỗi người 15 giây gửi 1 lời chúc — chờ thêm ${Math.ceil(left / 1000)} giây nhé ⏳`);
+    if (cdLeft("wish") > 0) return;
     send.disabled = true;
     try {
       await api.addWish(me.uid, me.name, text);
       startCooldown("wish", T.RULES.wishCooldownMs);
+      renderCooldowns(T.now());
       ui.closeModal();
       ui.toast("Đã gửi lời chúc 🏮");
       launch(0.5, 2);

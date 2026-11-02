@@ -14,7 +14,9 @@ Game web nhiều người chơi: cùng đếm ngược đến giao thừa 2027, 
 | Giờ vàng | 20:00–20:15 mỗi tối (giờ VN): ×3 |
 | Giao thừa | Sau 00:00 01/01/2027 không còn cộng điểm. Top 10 Mùa lên Bảng vàng. Người gửi lời chúc đầu tiên sau 00:00 là "Người mở màn 2027" |
 
-Chống gian lận: giờ lấy từ máy chủ; tối đa 2 phát/giây; điểm được gom và ghi mỗi 6 giây; Firestore Rules kiểm tra thời gian giữa 2 lần ghi (≥ 5 giây), mức điểm tối đa theo đúng hệ số thời gian, và điểm danh chỉ 1 lần mỗi ~20 giờ.
+**Giới hạn mỗi người:** 1 phát pháo / 15 giây và 1 lời chúc / 15 giây (nút hiện "CHỜ 12s"). Máy chủ (Firestore Rules) cũng chặn nếu 2 lần cách nhau dưới 15 giây, nên dùng bot/tool cũng không vượt được.
+
+Chống gian lận khác: giờ lấy từ máy chủ; mỗi lần ghi tối đa điểm của đúng 1 phát theo hệ số thời gian; điểm danh chỉ 1 lần mỗi ~20 giờ.
 
 ## Cài đặt
 
@@ -31,6 +33,13 @@ Chống gian lận: giờ lấy từ máy chủ; tối đa 2 phát/giây; điể
 - `?demo=1&t=2026-12-31T20:05:00%2B07:00` — xem thử giờ vàng tuần cuối.
 - `?demo=1&t=2026-12-31T23:59:50%2B07:00` — xem 10 giây cuối + Bảng vàng.
   (Khi có `t=…` điểm không được lưu.)
+
+## 🏙️ Ảnh nền theo tỉnh
+
+Chép ảnh vào thư mục `background/`, đặt tên không dấu nối bằng `_`: `ho_chi_minh.jpg`, `ha_noi.jpg`, `da_nang.webp`… rồi commit + push — game tự nhận.
+- Ảnh thay cho bầu trời phía sau đồng hồ. Tên có dấu hiện tự động ("TP. Hồ Chí Minh"); bảng tên nằm trong `js/bg.js`.
+- Người chơi bấm **📍** (dưới đồng hồ) để chọn nơi đón giao thừa, hoặc **Tự đổi** (mỗi 15 giây một tỉnh). Lựa chọn được lưu vào hồ sơ (trường `province`) — dùng được cho đấu theo tỉnh sau này.
+- Nên dùng ảnh rộng ≥ 1080 px, dưới 500 KB. Chỉ dùng ảnh bạn được phép sử dụng.
 
 ## 🎵 Nhạc nền
 
@@ -50,7 +59,7 @@ cd_wishes/{id}                     uid, name, text, createdAt
 
 ## Chi phí
 
-Bảng xếp hạng và đám đông **cập nhật tức thì** (Firestore realtime): mỗi khi một người ghi điểm (6 giây/lần khi đang bắn), mỗi người đang xem nhận 1 lượt đọc cho bảng và 1 cho danh sách online.
+Bảng xếp hạng và đám đông **cập nhật tức thì** (Firestore realtime): mỗi khi một người ghi điểm (tối đa 1 lần / 15 giây mỗi người), mỗi người đang xem nhận 1 lượt đọc cho bảng và 1 cho danh sách online.
 Gói miễn phí (50.000 lượt đọc/ngày) đủ cho thử nghiệm và vài người chơi. Khi đông người (nhất là đêm giao thừa) nên nâng Firebase lên gói **Blaze** (trả theo dùng, khoảng 0,06 USD / 100.000 lượt đọc) — nếu không, hết hạn mức thì game ngừng ghi/đọc đến 0 giờ (giờ Mỹ) hôm sau.
 
 **Khi sửa code:** tăng `?v=1` → `?v=2` ở 2 chỗ trong `index.html`.

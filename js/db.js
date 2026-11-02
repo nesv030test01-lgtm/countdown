@@ -34,6 +34,8 @@ export async function ensureUser(user) {
 }
 
 export const setName = (uid, name) => updateDoc(userRef(uid), { name: cleanName(name) });
+/** Tỉnh/thành người chơi chọn (để sau này đấu theo tỉnh) */
+export const setProvince = (uid, key) => updateDoc(userRef(uid), { province: key || null });
 export const heartbeat = (uid) => updateDoc(userRef(uid), { lastSeen: serverTimestamp() });
 
 export function watchMe(uid, cb, onErr) {
