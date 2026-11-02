@@ -21,9 +21,9 @@ Chống gian lận: giờ lấy từ máy chủ; tối đa 2 phát/giây; điể
 1. **Firestore Rules:** mở `firestore.rules` → copy **toàn bộ** → Firebase Console → Firestore → Rules → dán đè → **Publish**.
    File này đã gộp luật của **cả Đi Chùa và Countdown** (2 app dùng chung 1 Firebase) — đừng dán file cũ của Đi Chùa đè lên.
 2. `js/firebase-config.js` đã có sẵn config (giống Đi Chùa).
-3. Tạo repo GitHub `countdown`, push, bật **Settings → Pages → main / (root)**.
+3. Tạo repo GitHub `countdown_online`, push, bật **Settings → Pages → main / (root)**.
    Domain `nesv030test01-lgtm.github.io` đã có trong Authorized domains nên đăng nhập dùng được ngay.
-4. Mở `https://nesv030test01-lgtm.github.io/countdown/`
+4. Mở `https://nesv030test01-lgtm.github.io/countdown_online/`
 
 ## Xem thử
 
@@ -50,6 +50,7 @@ cd_wishes/{id}                     uid, name, text, createdAt
 
 ## Chi phí
 
-Bảng xếp hạng / người online được tải lại mỗi 45 giây (không realtime) để tiết kiệm lượt đọc. Gói miễn phí (50k đọc, 20k ghi/ngày) đủ cho vài chục người chơi đều đặn. Nếu đông người (đêm giao thừa), nên nâng Firebase lên gói **Blaze** (trả theo dùng — khoảng 0,06 USD / 100.000 lượt đọc).
+Bảng xếp hạng và đám đông **cập nhật tức thì** (Firestore realtime): mỗi khi một người ghi điểm (6 giây/lần khi đang bắn), mỗi người đang xem nhận 1 lượt đọc cho bảng và 1 cho danh sách online.
+Gói miễn phí (50.000 lượt đọc/ngày) đủ cho thử nghiệm và vài người chơi. Khi đông người (nhất là đêm giao thừa) nên nâng Firebase lên gói **Blaze** (trả theo dùng, khoảng 0,06 USD / 100.000 lượt đọc) — nếu không, hết hạn mức thì game ngừng ghi/đọc đến 0 giờ (giờ Mỹ) hôm sau.
 
 **Khi sửa code:** tăng `?v=1` → `?v=2` ở 2 chỗ trong `index.html`.

@@ -72,11 +72,15 @@ export async function fetchBoard(kind, key, n = 10) {
 export async function fetchOnline(nowMs) {
   const since = Timestamp.fromMillis(nowMs - 150_000);
   const s = await getDocs(query(users, where("lastSeen", ">=", since), orderBy("lastSeen", "desc"), limit(15)));
-  return rows(s, "total").filter((u) => u.name);
+  return rows(s, "total");
 }
 
+/** Gửi lời chúc + ghi lastWishAt vào hồ sơ (máy chủ dùng để chặn gửi dồn dập < 15 giây) */
 export function addWish(uid, name, text) {
-  return addDoc(collection(db, "cd_wishes"), { uid, name: cleanName(name) || "Ẩn danh", text, createdAt: serverTimestamp() });
+  const b = writeBatch(db);
+  b.set(doc(collection(db, "cd_wishes")), { uid, name: cleanName(name) || "Ẩn danh", text, createdAt: serverTimestamp() });
+  b.update(userRef(uid), { lastWishAt: serverTimestamp() });
+  return b.commit();
 }
 export async function fetchWishes(n = 8) {
   const s = await getDocs(query(collection(db, "cd_wishes"), orderBy("createdAt", "desc"), limit(n)));
@@ -93,4 +97,27 @@ export async function fetchOpener() {
 export async function fetchMine(kind, key, uid) {
   const s = await getDoc(doc(db, kind === "day" ? "cd_days" : "cd_weeks", key, "players", uid));
   return s.exists() ? s.data().pts || 0 : 0;
+}
+
+// ---- Cập nhật tức thì (realtime) ----
+function boardQuery(kind, key, n) {
+  if (kind === "season") return query(users, orderBy("total", "desc"), limit(n));
+  return query(collection(db, kind === "day" ? "cd_days" : "cd_weeks", key, "players"), orderBy("pts", "desc"), limit(n));
+}
+/** Theo dõi bảng xếp hạng: cb(list) mỗi khi có người thay đổi điểm */
+export function watchBoard(kind, key, cb, onErr, n = 10) {
+  return onSnapshot(boardQuery(kind, key, n), (s) => cb(rows(s, kind === "season" ? "total" : "pts")), onErr);
+}
+/** Theo dõi người đang online (hoạt động trong 2,5 phút). Tự đăng ký lại mỗi phút. */
+export function watchOnline(nowFn, cb, onErr) {
+  let unsub = null;
+  const sub = () => {
+    unsub?.();
+    const since = Timestamp.fromMillis(nowFn() - 150_000);
+    unsub = onSnapshot(query(users, where("lastSeen", ">=", since), orderBy("lastSeen", "desc"), limit(15)),
+      (s) => cb(rows(s, "total")), onErr);
+  };
+  sub();
+  const t = setInterval(sub, 60_000);
+  return () => { clearInterval(t); unsub?.(); };
 }

@@ -84,24 +84,24 @@ service cloud.firestore {
         : request.time >= TARGET() - duration.value(7, 'd') ? 3
         : request.time >= DEC1() ? 2 : 1;
     }
-    // Điểm tối đa cho 1 lần ghi: 20 phát × hệ số thời gian × chuỗi (×2) × giờ vàng (×3)
-    function cap() { return 20 * tMult() * 6; }
+    // Điểm tối đa cho 1 lần ghi = 1 phát pháo: hệ số thời gian × chuỗi (×2) × giờ vàng (×3)
+    function cap() { return tMult() * 6; }
     function dlt(f) {
       return request.resource.data.get(f, 0) - (resource == null ? 0 : resource.data.get(f, 0));
     }
     function same(f) {
       return request.resource.data.get(f, null) == (resource == null ? null : resource.data.get(f, null));
     }
-    // Giữa 2 lần ghi điểm phải cách ít nhất 5 giây (chống bot)
+    // Mỗi người: 1 phát pháo / 15 giây (cho phép lệch mạng 1 giây → kiểm tra 14 giây)
     function cooldownOk() {
       return resource == null || !('lastAt' in resource.data)
-        || request.time >= resource.data.lastAt + duration.value(5, 's');
+        || request.time >= resource.data.lastAt + duration.value(14, 's');
     }
 
     function cdShotOk() {
       return request.resource.data.lastAt == request.time && cooldownOk()
         && dlt('total') >= 0 && dlt('total') <= cap()
-        && same('streak') && same('lastCheckinAt');
+        && same('streak') && same('lastCheckinAt') && same('lastWishAt');
     }
     function cdCheckinOk() {
       let prev = resource.data.get('lastCheckinAt', null);
@@ -110,10 +110,17 @@ service cloud.firestore {
         && (prev == null || request.time >= prev + duration.value(20, 'h'))
         && (s == 1 || (prev != null && request.time < prev + duration.value(48, 'h') && s == resource.data.get('streak', 0) + 1))
         && dlt('total') >= 0 && dlt('total') <= 10 * s && s <= 1000
-        && same('lastAt');
+        && same('lastAt') && same('lastWishAt');
+    }
+    // Gửi lời chúc: mỗi người 1 lời chúc / 15 giây (ghi lastWishAt cùng lúc với lời chúc)
+    function cdWishOk() {
+      let prev = resource.data.get('lastWishAt', null);
+      return request.resource.data.lastWishAt == request.time
+        && (prev == null || request.time >= prev + duration.value(14, 's'))
+        && dlt('total') == 0 && same('streak') && same('lastCheckinAt') && same('lastAt');
     }
     function cdProfileOnly() {
-      return dlt('total') == 0 && same('streak') && same('lastCheckinAt') && same('lastAt');
+      return dlt('total') == 0 && same('streak') && same('lastCheckinAt') && same('lastAt') && same('lastWishAt');
     }
 
     match /cd_users/{uid} {
@@ -121,7 +128,7 @@ service cloud.firestore {
       allow create: if isOwner(uid) && request.resource.data.total == 0
         && request.resource.data.streak == 0 && nameOk();
       allow update: if isOwner(uid) && nameOk()
-        && (cdProfileOnly() || cdShotOk() || cdCheckinOk());
+        && (cdProfileOnly() || cdShotOk() || cdCheckinOk() || cdWishOk());
       allow delete: if false;
     }
 
@@ -149,7 +156,9 @@ service cloud.firestore {
         && request.resource.data.name is string && request.resource.data.name.size() <= 24
         && request.resource.data.text is string
         && request.resource.data.text.size() >= 1 && request.resource.data.text.size() <= 120
-        && request.resource.data.createdAt == request.time;
+        && request.resource.data.createdAt == request.time
+        // phải ghi kèm lastWishAt trong hồ sơ (để máy chủ kiểm tra 15 giây)
+        && getAfter(/databases/$(database)/documents/cd_users/$(request.auth.uid)).data.lastWishAt == request.time;
       allow update, delete: if false;
     }
 

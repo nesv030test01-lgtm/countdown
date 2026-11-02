@@ -33,6 +33,14 @@ export function demoApi() {
       return sortList([...src].map(([uid, pts]) => ({ uid, pts, name: uid === "demo-me" ? me.name : people.find((p) => p.uid === uid)?.name }))).slice(0, n);
     },
     fetchOnline: async () => people.slice(0, 11).map((p) => ({ ...p })),
+    watchBoard(kind, key, cb, _e, n = 10) {
+      const go = () => this.fetchBoard(kind, key, n).then(cb);
+      go(); const t = setInterval(go, 1500); return () => clearInterval(t);
+    },
+    watchOnline(_now, cb) {
+      const go = () => cb(people.slice(0, 11).map((p) => ({ ...p })));
+      go(); const t = setInterval(go, 1500); return () => clearInterval(t);
+    },
     addWish: async (_, name, text) => { wishes.unshift({ name, text }); },
     fetchWishes: async () => wishes.slice(0, 8),
     fetchOpener: async () => wishes[0] || null,

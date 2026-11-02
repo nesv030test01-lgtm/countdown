@@ -51,6 +51,7 @@ let ranks = new Map();
 let goldenShown = false;
 let simWarned = false;
 let timers = [];
+const subs = {};          // các kênh cập nhật tức thì
 const tsMs = (x) => (x?.toMillis ? x.toMillis() : typeof x === "number" ? x : null);
 
 if (DEMO) boot({ uid: "demo-me", isAnonymous: true, providerData: [] });
@@ -65,6 +66,7 @@ async function boot(u) {
   timers = [];
   user = u;
   me = null;
+  unsubscribeAll();
   // Tạo / đọc hồ sơ. Thử lại vài lần; nếu vẫn lỗi thì báo rõ và dừng (không chạy tiếp với hồ sơ rỗng).
   let lastErr = null;
   for (let i = 0; i < 3 && !me; i++) {
@@ -87,11 +89,11 @@ async function boot(u) {
 
   api.watchMe(u.uid, (d) => { if (d) { me = { uid: u.uid, ...d }; renderMe(); } }, (e) => console.warn(e));
   await refreshMine();
-  refresh();
+  subscribe();
   timers.push(
     setInterval(tick, 200),
     setInterval(doFlush, T.RULES.flushEveryMs),
-    setInterval(refresh, 45_000),
+    setInterval(subscribe, 60_000), // sang ngày / tuần mới → đổi bảng
     setInterval(ambient, 2500),
     setInterval(() => { if (document.visibilityState === "visible") api.heartbeat(u.uid).catch(() => {}); }, 60_000),
   );
@@ -126,10 +128,9 @@ function tick() {
   }
   if (me) {
     $("chip-streak").textContent = `🔥 Chuỗi ${me.streak || 0} ngày ×${T.streakMult(me.streak).toFixed(2)}`;
-    const per = T.shotPoints(t, me.streak);
-    $("my-per").textContent = `+${per}`;
-    $("shoot-sub").textContent = per ? `+${per} ĐIỂM` : "HẾT GIỜ";
+    $("my-per").textContent = `+${T.shotPoints(t, me.streak)}`;
     renderCheckin(t);
+    renderCooldowns(t);
   }
 
   // 10 giây cuối
@@ -186,24 +187,48 @@ $("btn-checkin").onclick = async () => {
 };
 
 // ---------- Bắn pháo ----------
+// Thời gian chờ mỗi loại (lưu trong máy để tải lại trang vẫn giữ). Máy chủ cũng chặn nếu < 15 giây.
+const CD_KEY = "cd-cooldowns";
+let cooldowns = {};
+try { cooldowns = JSON.parse(localStorage.getItem(CD_KEY)) || {}; } catch {}
+const cdLeft = (k) => Math.max(0, (cooldowns[k] || 0) - Date.now());
+function startCooldown(k, ms) {
+  cooldowns[k] = Date.now() + ms;
+  try { localStorage.setItem(CD_KEY, JSON.stringify(cooldowns)); } catch {}
+}
+function renderCooldowns(t) {
+  const shot = cdLeft("shot"), wish = cdLeft("wish");
+  const sb = $("btn-shoot"), wb = $("btn-wish");
+  sb.classList.toggle("cooling", shot > 0);
+  sb.style.setProperty("--p", shot > 0 ? (1 - shot / T.RULES.shotCooldownMs).toFixed(3) : 1);
+  if (shot > 0) $("shoot-sub").textContent = `CHỜ ${Math.ceil(shot / 1000)}s`;
+  else { const per = T.shotPoints(t, me.streak); $("shoot-sub").textContent = per ? `+${per} ĐIỂM` : "HẾT GIỜ"; }
+  wb.classList.toggle("cooling", wish > 0);
+  wb.style.setProperty("--p", wish > 0 ? (1 - wish / T.RULES.wishCooldownMs).toFixed(3) : 1);
+  $("wish-sub").textContent = wish > 0 ? `CHỜ ${Math.ceil(wish / 1000)}s` : "LỜI CHÚC";
+}
+
 $("btn-shoot").onclick = () => {
   if (!me) return;
+  const left = cdLeft("shot");
+  if (left > 0) return ui.toast(`Mỗi người 15 giây bắn 1 phát — chờ thêm ${Math.ceil(left / 1000)} giây nhé ⏳`);
   const t = T.now();
-  if (t - lastShot < T.RULES.shotCooldownMs) return;
-  lastShot = t;
   const pts = T.shotPoints(t, me.streak);
   launch(0.5 + (Math.random() - 0.5) * 0.3, pts >= 10 ? 2 : 1);
   ui.boom(pts >= 10);
   ui.cheer(me.uid);
   if (!pts) return ui.toast("Mùa đếm ngược đã kết thúc — chúc mừng năm mới! 🎉");
+  startCooldown("shot", T.RULES.shotCooldownMs);
   pending.user += pts;
   pending.period += pts;
   ui.floatText(`+${pts}`, 0.5, 70);
   renderMe();
+  doFlush(); // ghi ngay lên máy chủ
 };
 
 async function doFlush() {
-  if (flushing || !me || (!pending.user && !pending.period)) return;
+  // Chỉ ghi khi có phát pháo chưa lưu (điểm danh thưởng đi kèm lần ghi này)
+  if (flushing || !me || !pending.user) return;
   if (T.isSimulated()) {
     if (!simWarned) { simWarned = true; ui.toast("Đang xem thử thời gian (?t=…) — điểm không được lưu."); }
     return;
@@ -222,9 +247,13 @@ async function doFlush() {
   } catch (e) {
     console.warn(e);
     // trả lại để ghi lần sau (giới hạn để không vượt mức máy chủ cho phép)
-    pending.user = Math.min(pending.user + inflight.user, 100);
-    pending.period = Math.min(pending.period + inflight.period, 300);
-    if (e?.code === "permission-denied") ui.toast(errMsg(e));
+    // trả lại để thử ghi lần sau (giới hạn bằng mức máy chủ cho phép cho 1 phát)
+    pending.user = Math.min(pending.user + inflight.user, 6 * Math.max(1, T.timeMult()));
+    pending.period = Math.min(pending.period + inflight.period, 6 * Math.max(1, T.timeMult()) + 300);
+    if (e?.code === "permission-denied") {
+      startCooldown("shot", T.RULES.shotCooldownMs);
+      ui.toast("Máy chủ yêu cầu chờ 15 giây giữa 2 phát — điểm sẽ được ghi ở phát sau.");
+    }
   } finally {
     inflight = { user: 0, period: 0 };
     flushing = false;
@@ -235,17 +264,36 @@ addEventListener("pagehide", doFlush);
 document.addEventListener("visibilitychange", () => { if (document.hidden) doFlush(); });
 
 // ---------- Hiển thị của tôi ----------
+function myPts(kind) {
+  if (kind === "season") return (me.total || 0) + pending.user + inflight.user;
+  const row = boards[kind]?.list.find((x) => x.uid === me.uid);
+  const saved = Math.max(row?.pts || 0, kind === "day" ? myDay : myWeek);
+  return saved + pending.period + inflight.period;
+}
+/** Bảng đã gộp điểm mới nhất của tôi (chưa kịp lưu) để thứ hạng nhảy ngay khi bắn */
+function mergedBoard(kind) {
+  const list = (boards[kind]?.list || []).map((x) => ({ ...x }));
+  if (!me) return list;
+  const pts = myPts(kind);
+  const row = list.find((x) => x.uid === me.uid);
+  if (row) { row.pts = pts; row.name = me.name || row.name; }
+  else if (pts > 0) list.push({ uid: me.uid, name: me.name || "Ẩn danh", pts });
+  return list.sort((a, b) => b.pts - a.pts).slice(0, 10);
+}
+
 function renderMe() {
   if (!me) return;
   $("me-name").textContent = me.name || "Ẩn danh";
   const img = $("me-ava");
   img.classList.toggle("hidden", !me.photoURL);
   if (me.photoURL && img.getAttribute("src") !== me.photoURL) img.src = me.photoURL;
-  $("my-total").textContent = ui.fmt((me.total || 0) + pending.user + inflight.user);
-  $("my-day").textContent = ui.fmt(myDay + pending.period + inflight.period);
-  const day = boards.day?.list || [];
+  $("my-total").textContent = ui.fmt(myPts("season"));
+  $("my-day").textContent = ui.fmt(myPts("day"));
+  const day = mergedBoard("day");
   const i = day.findIndex((x) => x.uid === me.uid);
   $("my-rank").textContent = i >= 0 ? `#${i + 1}` : day.length >= 10 ? ">10" : "—";
+  ranks = new Map(day.slice(0, 5).map((x, k) => [x.uid, k + 1]));
+  ui.renderBoard(mergedBoard(tab), me.uid, tab === "season" ? "Chưa có ai trên bảng mùa này." : undefined);
   drawPeople();
 }
 
@@ -256,46 +304,59 @@ function drawPeople() {
   $("online-count").textContent = ui.fmt(others.length + 1);
 }
 
-// ---------- Làm mới bảng xếp hạng / người đang online ----------
+// ---------- Cập nhật tức thì: bảng xếp hạng + người đang online ----------
 async function refreshMine() {
   try {
     [myDay, myWeek] = await Promise.all([api.fetchMine("day", T.dayKey(), me.uid), api.fetchMine("week", T.weekKey(), me.uid)]);
   } catch {}
 }
-async function loadBoard(kind, force) {
-  const key = kind === "day" ? T.dayKey() : kind === "week" ? T.weekKey() : "season";
-  const c = boards[kind];
-  if (!force && c && c.key === key && Date.now() - c.at < 20_000) return c.list;
-  const list = await api.fetchBoard(kind, key);
-  boards[kind] = { key, list, at: Date.now() };
-  return list;
+const warn = (e) => { console.warn(e); if (e?.code === "permission-denied") ui.toast(errMsg(e)); };
+function unsubscribeAll() {
+  for (const k of ["day", "tab", "online"]) { subs[k]?.(); subs[k] = null; }
+  subs.dayKey = subs.tabKey = null;
+  boards = {};
+  online = [];
+  prevTotals = new Map();
 }
-async function refresh() {
+function subscribe() {
   if (!me) return;
-  try {
-    const [list, on] = await Promise.all([loadBoard(tab, true), api.fetchOnline(T.now())]);
-    if (tab !== "day") await loadBoard("day");
-    ranks = new Map((boards.day?.list || []).slice(0, 5).map((x, i) => [x.uid, i + 1]));
-    ui.renderBoard(list, me.uid, tab === "season" ? "Chưa có ai trên bảng mùa này." : undefined);
-    // Ai vừa bắn pháo (điểm tăng so với lần trước) → thông báo + pháo hoa từ chỗ họ
-    for (const x of on) {
-      const before = prevTotals.get(x.uid);
-      if (x.uid !== me.uid && before != null && x.pts > before) {
-        const gain = x.pts - before;
-        ui.pushBanner(`🎆 ${x.name} vừa bắn pháo (+${ui.fmt(gain)} điểm)`);
-        setTimeout(() => { launch(ui.personX(x.uid), gain > 50 ? 2 : 1); ui.cheer(x.uid); }, Math.random() * 1500);
-      }
-      prevTotals.set(x.uid, x.pts);
+  const dk = T.dayKey();
+  if (subs.dayKey !== dk) {
+    subs.day?.();
+    subs.dayKey = dk;
+    if (myDay && boards.day && boards.day.key !== dk) myDay = 0; // sang ngày mới
+    subs.day = api.watchBoard("day", dk, (list) => { boards.day = { key: dk, list }; renderMe(); }, warn);
+  }
+  const tk = tab === "week" ? T.weekKey() : tab === "season" ? "season" : null;
+  if (tab === "day") { subs.tab?.(); subs.tab = null; subs.tabKey = null; }
+  else if (subs.tabKey !== tab + tk) {
+    subs.tab?.();
+    subs.tabKey = tab + tk;
+    const kind = tab;
+    subs.tab = api.watchBoard(kind, tk, (list) => { boards[kind] = { key: tk, list }; renderMe(); }, warn);
+  }
+  if (!subs.online) subs.online = api.watchOnline(T.now, onOnline, warn);
+}
+function onOnline(on) {
+  // Ai vừa bắn pháo (điểm tăng) → thông báo + pháo hoa từ chỗ họ
+  for (const x of on) {
+    const before = prevTotals.get(x.uid);
+    if (x.uid !== me.uid && before != null && x.pts > before) {
+      const gain = x.pts - before;
+      ui.pushBanner(`🎆 ${x.name || "Ẩn danh"} vừa bắn pháo (+${ui.fmt(gain)} điểm)`);
+      setTimeout(() => { launch(ui.personX(x.uid), gain > 50 ? 2 : 1); ui.cheer(x.uid); }, Math.random() * 800);
     }
-    online = on;
-    renderMe();
-  } catch (e) { console.warn(e); }
+    prevTotals.set(x.uid, x.pts);
+  }
+  online = on;
+  renderMe();
 }
 document.querySelectorAll(".tabs button").forEach((b) => {
-  b.onclick = async () => {
+  b.onclick = () => {
     tab = b.dataset.tab;
     document.querySelectorAll(".tabs button").forEach((x) => x.classList.toggle("on", x === b));
-    try { ui.renderBoard(await loadBoard(tab), me?.uid); } catch (e) { console.warn(e); }
+    subscribe();
+    renderMe();
   };
 });
 
@@ -348,6 +409,7 @@ function openRules() {
   ui.openModal((card) => card.append(
     h("h2", {}, "🎆 Cách tranh top"),
     h("ul", { class: "rules" },
+      h("li", {}, "Mỗi người được bắn 1 phát pháo mỗi 15 giây, và gửi 1 lời chúc mỗi 15 giây — hãy canh giờ thật chuẩn!"),
       h("li", {}, "Mỗi phát pháo được điểm. Càng gần giao thừa càng nhiều: tháng 11 ×1, tháng 12 ×2, tuần cuối ×3, giờ cuối ×5, 60 giây cuối ×10."),
       h("li", {}, "Điểm danh mỗi ngày để giữ chuỗi 🔥 — chuỗi càng dài, mỗi phát càng nhiều điểm (30 ngày liên tiếp ×2). Bỏ 1 ngày là mất chuỗi!"),
       h("li", {}, "⭐ Giờ vàng 20:00–20:15 mỗi tối: điểm ×3."),
@@ -405,14 +467,21 @@ function openWish() {
   send.onclick = async () => {
     const text = ta.value.replace(/\s+/g, " ").trim();
     if (!text) return ui.toast("Hãy viết lời chúc trước nhé.");
+    const left = cdLeft("wish");
+    if (left > 0) return ui.toast(`Mỗi người 15 giây gửi 1 lời chúc — chờ thêm ${Math.ceil(left / 1000)} giây nhé ⏳`);
     send.disabled = true;
     try {
       await api.addWish(me.uid, me.name, text);
+      startCooldown("wish", T.RULES.wishCooldownMs);
       ui.closeModal();
       ui.toast("Đã gửi lời chúc 🏮");
       launch(0.5, 2);
       if (after) setTimeout(showGolden, 1500);
-    } catch (e) { send.disabled = false; ui.toast(errMsg(e)); }
+    } catch (e) {
+      send.disabled = false;
+      if (e?.code === "permission-denied") { startCooldown("wish", T.RULES.wishCooldownMs); ui.toast("Chờ 15 giây giữa 2 lời chúc nhé ⏳"); }
+      else ui.toast(errMsg(e));
+    }
   };
   ui.openModal((card) => {
     card.append(

@@ -8,8 +8,9 @@ export const DEC1 = Date.UTC(2026, 10, 30, 17, 0, 0);   // 00:00 01/12/2026 gi�
 const VN = 7 * 3600_000;
 
 export const RULES = {
-  shotCooldownMs: 500,   // tối đa 2 phát/giây
-  flushEveryMs: 6000,    // gom điểm, ghi lên máy chủ mỗi 6 giây
+  shotCooldownMs: 15000, // mỗi người: 1 phát pháo / 15 giây (máy chủ cũng kiểm tra)
+  wishCooldownMs: 15000, // mỗi người: 1 lời chúc / 15 giây (máy chủ cũng kiểm tra)
+  flushEveryMs: 5000,    // thử ghi lại điểm chưa lưu được (nếu mạng lỗi)
   goldenStartHour: 20,   // giờ vàng 20:00–20:15 mỗi tối
   goldenMinutes: 15,
   goldenMult: 3,

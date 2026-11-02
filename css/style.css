@@ -250,3 +250,11 @@ h1 { margin: 6px 0; }
   animation: hintPulse 1.6s ease-in-out infinite;
 }
 @keyframes hintPulse { 50% { opacity: .55; } }
+
+/* Thời gian chờ 15 giây: nút mờ + thanh tiến trình chạy dưới đáy */
+.big { position: relative; overflow: hidden; }
+.big.cooling { filter: saturate(.35) brightness(.8); }
+.big.cooling::after {
+  content: ""; position: absolute; left: 0; bottom: 0; height: 4px;
+  width: calc(var(--p, 0) * 100%); background: var(--gold); transition: width .2s linear;
+}
