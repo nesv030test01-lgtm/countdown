@@ -64,10 +64,21 @@ async function boot(u) {
   timers.forEach(clearInterval);
   timers = [];
   user = u;
-  try {
-    const d = await api.ensureUser(u);
-    me = { uid: u.uid, ...d };
-  } catch (e) { ui.toast(errMsg(e)); me = { uid: u.uid, name: null, total: 0, streak: 0 }; }
+  me = null;
+  // Tạo / đọc hồ sơ. Thử lại vài lần; nếu vẫn lỗi thì báo rõ và dừng (không chạy tiếp với hồ sơ rỗng).
+  let lastErr = null;
+  for (let i = 0; i < 3 && !me; i++) {
+    try {
+      const d = await api.ensureUser(u);
+      me = { uid: u.uid, ...d };
+    } catch (e) { lastErr = e; await new Promise((r) => setTimeout(r, 800 * (i + 1))); }
+  }
+  if (!me) {
+    show("screen-login");
+    $("login-error").textContent = "Không tạo được hồ sơ: " + errMsg(lastErr) + " Hãy tải lại trang.";
+    console.error(lastErr);
+    return;
+  }
 
   show("screen-game");
   initFx($("fx"));
@@ -304,7 +315,13 @@ function askName(first) {
     name = (name || "").replace(/\s+/g, " ").trim().slice(0, 24);
     if (!name) return (err.textContent = "Hãy nhập tên (1–24 ký tự).");
     try {
-      await api.setName(me.uid, name);
+      try {
+        await api.setName(me.uid, name);
+      } catch (e) {
+        if (e?.code !== "not-found" || DEMO) throw e;
+        await api.ensureUser(user); // hồ sơ chưa có → tạo rồi lưu tên lại
+        await api.setName(me.uid, name);
+      }
       me.name = name;
       renderMe();
       ui.closeModal();
